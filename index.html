@@ -230,53 +230,48 @@
             getMockData(endpoint) {
                 // Mock data for development/fallback
                 if (endpoint === '/collections') {
-                    return {
-                        success: true,
-                        data: {
-                            items: Object.entries(this.collectionNames).map(([id, name]) => ({
-                                id,
-                                name,
-                                metrics: {
-                                    volume: Math.random() * 300 + 50,
-                                    floorPrice: Math.random() * 0.5 + 0.3,
-                                    sales: Math.floor(Math.random() * 100) + 20,
-                                }
-                            }))
+                    return Object.entries(this.collectionNames).slice(0, 8).map(([id, name]) => ({
+                        id,
+                        name,
+                        metrics: {
+                            volume: Math.random() * 300 + 50,
+                            floorPrice: Math.random() * 0.5 + 0.3,
+                            sales: String(Math.floor(Math.random() * 100) + 20),
                         }
-                    };
+                    }));
                 }
                 
-                return { success: false, data: null };
+                return [];
             }
 
             async getCollections() {
                 const response = await this.makeRequest('/collections');
-                console.log('API Response:', response);
+                console.log('Raw API Response:', response);
                 
                 // Handle different response formats
                 let collections = [];
-                if (response.success && response.data?.items) {
-                    collections = response.data.items;
-                } else if (response.data && Array.isArray(response.data)) {
+                if (response && response.data && Array.isArray(response.data)) {
                     collections = response.data;
                 } else if (Array.isArray(response)) {
                     collections = response;
+                } else if (response && response.success && response.data?.items) {
+                    collections = response.data.items;
                 } else {
-                    console.warn('Unexpected API response format:', response);
-                    return [];
+                    console.warn('Using fallback data due to API response format:', response);
+                    collections = this.getMockData('/collections');
                 }
 
-                console.log('Processing collections:', collections.length);
+                console.log('Processing collections count:', collections.length);
                 
-                return collections.map((item) => {
+                const processedCollections = collections.map((item) => {
                     const id = String(item.id || item.collection_id || '');
                     const name = String(item.name || item.collection_name || '');
                     
                     // Handle different metrics formats
                     const metrics = item.metrics || item;
                     const volume = Number(metrics.volume || metrics.total_volume || 0);
-                    const floorPrice = Number(metrics.floorPrice || metrics.floor_price || Math.random() * 0.5 + 0.3);
-                    const sales = Number(metrics.sales || metrics.total_sales || Math.floor(Math.random() * 100) + 20);
+                    const floorPrice = Number(metrics.floorPrice || metrics.floor_price || 0);
+                    const sales = Number(String(metrics.sales || metrics.total_sales || 0).replace(/[^0-9]/g, ''));
                     
                     const collectionData = {
                         id,
@@ -290,9 +285,12 @@
                         status: volume > 50 ? 'Active' : volume > 20 ? 'Low Activity' : 'Inactive',
                     };
                     
-                    console.log('Processed collection:', collectionData);
+                    console.log('Processed collection:', collectionData.name, 'Volume:', collectionData.volume);
                     return collectionData;
                 });
+                
+                console.log('All processed collections:', processedCollections);
+                return processedCollections;
             }
 
             async getVolumeData(days = 30) {
@@ -337,22 +335,35 @@
 
             async getMetrics() {
                 const collections = await this.getCollections();
+                console.log('Calculating metrics for', collections.length, 'collections');
                 
-                const totalVolume = collections.reduce((sum, col) => sum + col.volume, 0);
-                const avgFloorPrice = collections.reduce((sum, col) => sum + col.floorPrice, 0) / collections.length;
-                const totalSales = collections.reduce((sum, col) => sum + col.sales, 0);
+                const totalVolume = collections.reduce((sum, col) => {
+                    const volume = Number(col.volume) || 0;
+                    console.log(`Adding volume for ${col.name}: ${volume}`);
+                    return sum + volume;
+                }, 0);
+                
+                const validFloorPrices = collections.filter(col => col.floorPrice > 0);
+                const avgFloorPrice = validFloorPrices.length > 0 
+                    ? validFloorPrices.reduce((sum, col) => sum + col.floorPrice, 0) / validFloorPrices.length 
+                    : 0;
+                
+                const totalSales = collections.reduce((sum, col) => sum + (Number(col.sales) || 0), 0);
                 const activeCollections = collections.filter(col => col.status === 'Active').length;
                 
-                return {
+                const metrics = {
                     totalVolume: totalVolume,
                     volumeChange: 24.8,
-                    avgFloorPrice: avgFloorPrice || 0,
+                    avgFloorPrice: avgFloorPrice,
                     floorChange: -8.2,
                     activeCollections: activeCollections,
                     collectionsChange: 15.3,
                     totalSales: totalSales,
                     salesChange: 31.7
                 };
+                
+                console.log('Calculated metrics:', metrics);
+                return metrics;
             }
         }
 
@@ -393,26 +404,32 @@
         }
 
         function updateMetricsCards(metrics) {
+            console.log('Updating metrics cards with:', metrics);
+            
             // Update Total Volume
             const volumeElement = document.querySelector('.grid .bg-white p.text-2xl');
             if (volumeElement) {
                 volumeElement.textContent = `$${metrics.totalVolume.toFixed(2)}`;
+                console.log('Updated volume element:', volumeElement.textContent);
             }
 
             // Update Avg Floor Price
             const floorElements = document.querySelectorAll('.grid .bg-white p.text-2xl');
             if (floorElements[1]) {
                 floorElements[1].textContent = `$${metrics.avgFloorPrice.toFixed(2)}`;
+                console.log('Updated floor price element:', floorElements[1].textContent);
             }
 
             // Update Active Collections
             if (floorElements[2]) {
                 floorElements[2].textContent = metrics.activeCollections.toString();
+                console.log('Updated active collections element:', floorElements[2].textContent);
             }
 
             // Update Total Sales
             if (floorElements[3]) {
                 floorElements[3].textContent = metrics.totalSales.toString();
+                console.log('Updated total sales element:', floorElements[3].textContent);
             }
         }
 
