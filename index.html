@@ -59,8 +59,8 @@
                         </div>
                         <div class="ml-4">
                             <p class="text-sm font-medium text-gray-500">Total Volume</p>
-                            <p class="text-2xl font-semibold text-gray-900">$1,234.56</p>
-                            <p class="text-sm text-green-600">+24.8% (24h)</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="total-volume">Loading...</p>
+                            <p class="text-xs text-gray-500">FUEL tokens</p>
                         </div>
                     </div>
                 </div>
@@ -76,8 +76,8 @@
                         </div>
                         <div class="ml-4">
                             <p class="text-sm font-medium text-gray-500">Avg Floor Price</p>
-                            <p class="text-2xl font-semibold text-gray-900">$0.45</p>
-                            <p class="text-sm text-red-600">-8.2% (24h)</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="avg-floor-price">Loading...</p>
+                            <p class="text-xs text-gray-500">FUEL tokens</p>
                         </div>
                     </div>
                 </div>
@@ -93,8 +93,8 @@
                         </div>
                         <div class="ml-4">
                             <p class="text-sm font-medium text-gray-500">Active Collections</p>
-                            <p class="text-2xl font-semibold text-gray-900">8</p>
-                            <p class="text-sm text-green-600">+15.3% (7d)</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="active-collections">Loading...</p>
+                            <p class="text-xs text-gray-500">Real-time count</p>
                         </div>
                     </div>
                 </div>
@@ -110,8 +110,8 @@
                         </div>
                         <div class="ml-4">
                             <p class="text-sm font-medium text-gray-500">Total Sales</p>
-                            <p class="text-2xl font-semibold text-gray-900">342</p>
-                            <p class="text-sm text-green-600">+31.7% (24h)</p>
+                            <p class="text-2xl font-semibold text-gray-900" id="total-sales">Loading...</p>
+                            <p class="text-xs text-gray-500">All-time sales</p>
                         </div>
                     </div>
                 </div>
@@ -121,7 +121,7 @@
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                 <!-- Volume Chart -->
                 <div class="bg-white p-6 rounded-lg shadow">
-                    <h3 class="text-lg font-medium text-gray-900 mb-4">Volume Over Time</h3>
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Current Total Volume</h3>
                     <div class="h-64">
                         <canvas id="volumeChart"></canvas>
                     </div>
@@ -129,7 +129,7 @@
 
                 <!-- Floor Price Chart -->
                 <div class="bg-white p-6 rounded-lg shadow">
-                    <h3 class="text-lg font-medium text-gray-900 mb-4">Floor Price Trend</h3>
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Current Avg Floor Price</h3>
                     <div class="h-64">
                         <canvas id="floorPriceChart"></canvas>
                     </div>
@@ -257,19 +257,8 @@
             }
 
             getMockData(endpoint) {
-                // Mock data for development/fallback
-                if (endpoint === '/collections') {
-                    return Object.entries(this.collectionNames).slice(0, 8).map(([id, name]) => ({
-                        id,
-                        name,
-                        metrics: {
-                            volume: Math.random() * 300 + 50,
-                            floorPrice: Math.random() * 0.5 + 0.3,
-                            sales: String(Math.floor(Math.random() * 100) + 20),
-                        }
-                    }));
-                }
-                
+                console.warn('Using fallback data for:', endpoint);
+                // Minimal fallback - prefer showing no data over fake data
                 return [];
             }
 
@@ -277,30 +266,26 @@
                 const response = await this.makeRequest('/collections');
                 console.log('Raw API Response:', response);
                 
-                // Handle different response formats
+                // Handle API response format
                 let collections = [];
-                if (response && response.data && Array.isArray(response.data)) {
-                    collections = response.data;
-                } else if (Array.isArray(response)) {
-                    collections = response;
-                } else if (response && response.success && response.data?.items) {
+                if (response && response.data && response.data.items && Array.isArray(response.data.items)) {
                     collections = response.data.items;
                 } else {
-                    console.warn('Using fallback data due to API response format:', response);
-                    collections = this.getMockData('/collections');
+                    console.error('Unexpected API response format:', response);
+                    return [];
                 }
 
-                console.log('Processing collections count:', collections.length);
+                console.log('Processing', collections.length, 'collections from API');
                 
                 const processedCollections = collections.map((item) => {
-                    const id = String(item.id || item.collection_id || '');
-                    const name = String(item.name || item.collection_name || '');
+                    const id = String(item.id || '');
+                    const name = String(item.name || '');
                     
-                    // Handle different metrics formats
-                    const metrics = item.metrics || item;
-                    const volume = Number(metrics.volume || metrics.total_volume || 0);
-                    const floorPrice = Number(metrics.floorPrice || metrics.floor_price || 0);
-                    const sales = Number(String(metrics.sales || metrics.total_sales || 0).replace(/[^0-9]/g, ''));
+                    // Get metrics - all prices assumed to be in FUEL tokens
+                    const metrics = item.metrics || {};
+                    const volume = Number(metrics.volume || 0);
+                    const floorPrice = Number(metrics.floorPrice || 0);
+                    const sales = Number(String(metrics.sales || 0).replace(/[^0-9]/g, ''));
                     
                     const collectionData = {
                         id,
@@ -308,74 +293,39 @@
                         volume,
                         floorPrice,
                         sales,
-                        volumeChange: (Math.random() - 0.5) * 60,
-                        floorChange: (Math.random() - 0.5) * 30,
-                        salesChange: (Math.random() - 0.5) * 50,
                         status: volume > 50 ? 'Active' : volume > 20 ? 'Low Activity' : 'Inactive',
                     };
                     
-                    console.log('Processed collection:', collectionData.name, 'Volume:', collectionData.volume);
+                    console.log(`Processed: ${collectionData.name} - Volume: ${volume} FUEL, Floor: ${floorPrice} FUEL, Sales: ${sales}`);
                     return collectionData;
                 });
                 
-                console.log('All processed collections:', processedCollections);
-                return processedCollections;
+                return processedCollections.filter(c => c.name && !c.name.startsWith('0x'));
             }
 
             async getVolumeData(range = '7d') {
-                let days;
-                switch(range) {
-                    case '7d': days = 7; break;
-                    case '30d': days = 30; break;
-                    case 'all': days = 365; break; // 1 year of data
-                    default: days = 7;
-                }
+                // Since API doesn't provide historical data, return current volume as single point
+                const collections = await this.getCollections();
+                const totalVolume = collections.reduce((sum, col) => sum + col.volume, 0);
                 
-                // Generate time series data for volume
-                const data = [];
-                const now = new Date();
-                
-                for (let i = days - 1; i >= 0; i--) {
-                    const date = new Date(now);
-                    date.setDate(date.getDate() - i);
-                    
-                    data.push({
-                        date: date.toISOString().split('T')[0],
-                        volume: Math.random() * 60 + 10 + Math.sin(i * 0.2) * 15
-                    });
-                }
-                
-                return data;
+                return [{
+                    date: new Date().toISOString().split('T')[0],
+                    volume: totalVolume
+                }];
             }
 
             async getFloorPriceData(range = '7d') {
-                let days;
-                switch(range) {
-                    case '7d': days = 7; break;
-                    case '30d': days = 30; break;
-                    case 'all': days = 365; break;
-                    default: days = 7;
-                }
+                // Since API doesn't provide historical data, return current average floor price
+                const collections = await this.getCollections();
+                const validFloorPrices = collections.filter(col => col.floorPrice > 0);
+                const avgFloorPrice = validFloorPrices.length > 0 
+                    ? validFloorPrices.reduce((sum, col) => sum + col.floorPrice, 0) / validFloorPrices.length 
+                    : 0;
                 
-                // Generate time series data for floor prices
-                const data = [];
-                const now = new Date();
-                let basePrice = 0.45;
-                
-                for (let i = days - 1; i >= 0; i--) {
-                    const date = new Date(now);
-                    date.setDate(date.getDate() - i);
-                    
-                    basePrice += (Math.random() - 0.6) * 0.02;
-                    basePrice = Math.max(0.3, Math.min(0.6, basePrice));
-                    
-                    data.push({
-                        date: date.toISOString().split('T')[0],
-                        floorPrice: basePrice
-                    });
-                }
-                
-                return data;
+                return [{
+                    date: new Date().toISOString().split('T')[0],
+                    floorPrice: avgFloorPrice
+                }];
             }
 
             async getMetrics() {
@@ -384,7 +334,7 @@
                 
                 const totalVolume = collections.reduce((sum, col) => {
                     const volume = Number(col.volume) || 0;
-                    console.log(`Adding volume for ${col.name}: ${volume}`);
+                    console.log(`Adding volume for ${col.name}: ${volume} FUEL`);
                     return sum + volume;
                 }, 0);
                 
@@ -398,16 +348,12 @@
                 
                 const metrics = {
                     totalVolume: totalVolume,
-                    volumeChange: 24.8,
                     avgFloorPrice: avgFloorPrice,
-                    floorChange: -8.2,
                     activeCollections: activeCollections,
-                    collectionsChange: 15.3,
-                    totalSales: totalSales,
-                    salesChange: 31.7
+                    totalSales: totalSales
                 };
                 
-                console.log('Calculated metrics:', metrics);
+                console.log('Real-time metrics (FUEL tokens):', metrics);
                 return metrics;
             }
 
@@ -421,17 +367,13 @@
                 }
             }
 
-            async getCollectionNFTs(collectionId, limit = 100) {
+            async getCollectionNFTs(collectionId) {
                 try {
-                    const response = await this.makeRequest(`/collections/${collectionId}/nfts?limit=${limit}`);
-                    if (response && response.data) {
-                        return response.data;
+                    const response = await this.makeRequest(`/collections/${collectionId}/nfts`);
+                    if (response && response.data && response.data.items) {
+                        return response.data.items;
                     }
-                    // Mock data for listed items if API doesn't provide
-                    return Array.from({length: Math.floor(Math.random() * 50) + 10}, (_, i) => ({
-                        id: `${collectionId}_${i}`,
-                        price: Math.random() * 2 + 0.1
-                    }));
+                    return [];
                 } catch (error) {
                     console.error(`Error fetching NFTs for ${collectionId}:`, error);
                     return [];
@@ -440,18 +382,28 @@
 
             async getEnhancedCollections() {
                 const collections = await this.getCollections();
+                console.log('Fetching NFT counts for', collections.length, 'collections');
                 
-                // Get additional details for each collection
+                // Get NFT counts for each collection
                 const enhancedCollections = await Promise.all(
                     collections.map(async (collection) => {
-                        const nfts = await this.getCollectionNFTs(collection.id);
-                        const listedItems = nfts ? nfts.length : Math.floor(Math.random() * 50) + 10;
-                        
-                        return {
-                            ...collection,
-                            listedItems,
-                            nfts
-                        };
+                        try {
+                            const response = await this.makeRequest(`/collections/${collection.id}/nfts`);
+                            const listedItems = response?.data?.pagination?.total || 0;
+                            
+                            console.log(`${collection.name}: ${listedItems} listed items`);
+                            
+                            return {
+                                ...collection,
+                                listedItems
+                            };
+                        } catch (error) {
+                            console.warn(`Could not fetch NFT count for ${collection.name}`);
+                            return {
+                                ...collection,
+                                listedItems: 0
+                            };
+                        }
                     })
                 );
                 
@@ -501,32 +453,34 @@
         }
 
         function updateMetricsCards(metrics) {
-            console.log('Updating metrics cards with:', metrics);
+            console.log('Updating metrics cards with real API data:', metrics);
             
-            // Update Total Volume
-            const volumeElement = document.querySelector('.grid .bg-white p.text-2xl');
+            // Update Total Volume (FUEL tokens)
+            const volumeElement = document.getElementById('total-volume');
             if (volumeElement) {
-                volumeElement.textContent = `$${metrics.totalVolume.toFixed(2)}`;
-                console.log('Updated volume element:', volumeElement.textContent);
+                volumeElement.textContent = `${metrics.totalVolume.toFixed(2)}`;
+                console.log('Updated volume:', metrics.totalVolume, 'FUEL');
             }
 
-            // Update Avg Floor Price
-            const floorElements = document.querySelectorAll('.grid .bg-white p.text-2xl');
-            if (floorElements[1]) {
-                floorElements[1].textContent = `$${metrics.avgFloorPrice.toFixed(2)}`;
-                console.log('Updated floor price element:', floorElements[1].textContent);
+            // Update Avg Floor Price (FUEL tokens)
+            const floorElement = document.getElementById('avg-floor-price');
+            if (floorElement) {
+                floorElement.textContent = `${metrics.avgFloorPrice.toFixed(2)}`;
+                console.log('Updated floor price:', metrics.avgFloorPrice, 'FUEL');
             }
 
             // Update Active Collections
-            if (floorElements[2]) {
-                floorElements[2].textContent = metrics.activeCollections.toString();
-                console.log('Updated active collections element:', floorElements[2].textContent);
+            const collectionsElement = document.getElementById('active-collections');
+            if (collectionsElement) {
+                collectionsElement.textContent = metrics.activeCollections.toString();
+                console.log('Updated active collections:', metrics.activeCollections);
             }
 
             // Update Total Sales
-            if (floorElements[3]) {
-                floorElements[3].textContent = metrics.totalSales.toString();
-                console.log('Updated total sales element:', floorElements[3].textContent);
+            const salesElement = document.getElementById('total-sales');
+            if (salesElement) {
+                salesElement.textContent = metrics.totalSales.toString();
+                console.log('Updated total sales:', metrics.totalSales);
             }
         }
 
@@ -537,20 +491,17 @@
                 volumeChart.destroy();
             }
 
+            // Show current volume as single bar
             volumeChart = new Chart(volumeCtx, {
-                type: 'line',
+                type: 'bar',
                 data: {
-                    labels: volumeData.map(d => {
-                        const date = new Date(d.date);
-                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    }),
+                    labels: ['Current Total Volume'],
                     datasets: [{
-                        label: 'Volume ($)',
+                        label: 'Volume (FUEL)',
                         data: volumeData.map(d => d.volume),
+                        backgroundColor: 'rgba(59, 130, 246, 0.8)',
                         borderColor: 'rgb(59, 130, 246)',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        tension: 0.4,
-                        fill: true
+                        borderWidth: 1
                     }]
                 },
                 options: {
@@ -559,11 +510,22 @@
                     plugins: {
                         legend: {
                             display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Volume: ${context.parsed.y.toFixed(2)} FUEL`;
+                                }
+                            }
                         }
                     },
                     scales: {
                         y: {
-                            beginAtZero: true
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'FUEL Tokens'
+                            }
                         }
                     }
                 }
@@ -577,20 +539,17 @@
                 floorPriceChart.destroy();
             }
 
+            // Show current average floor price as single bar
             floorPriceChart = new Chart(floorPriceCtx, {
-                type: 'line',
+                type: 'bar',
                 data: {
-                    labels: floorPriceData.map(d => {
-                        const date = new Date(d.date);
-                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    }),
+                    labels: ['Current Avg Floor Price'],
                     datasets: [{
-                        label: 'Floor Price ($)',
+                        label: 'Floor Price (FUEL)',
                         data: floorPriceData.map(d => d.floorPrice),
+                        backgroundColor: 'rgba(34, 197, 94, 0.8)',
                         borderColor: 'rgb(34, 197, 94)',
-                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                        tension: 0.4,
-                        fill: true
+                        borderWidth: 1
                     }]
                 },
                 options: {
@@ -599,11 +558,22 @@
                     plugins: {
                         legend: {
                             display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Avg Floor Price: ${context.parsed.y.toFixed(2)} FUEL`;
+                                }
+                            }
                         }
                     },
                     scales: {
                         y: {
-                            beginAtZero: false
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'FUEL Tokens'
+                            }
                         }
                     }
                 }
@@ -647,10 +617,10 @@
                 
                 row.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${collection.name}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${collection.volume.toFixed(2)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${collection.floorPrice.toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${collection.volume.toFixed(2)} FUEL</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${collection.floorPrice.toFixed(2)} FUEL</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${collection.sales}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${collection.listedItems || 'N/A'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${collection.listedItems || 'Loading...'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-${statusColor}-100 text-${statusColor}-800">${collection.status}</span>
                     </td>
@@ -710,7 +680,7 @@
                                     const value = context.parsed;
                                     const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                     const percentage = ((value / total) * 100).toFixed(1);
-                                    return `${context.label}: $${value.toFixed(2)} (${percentage}%)`;
+                                    return `${context.label}: ${value.toFixed(2)} FUEL (${percentage}%)`;
                                 }
                             }
                         }
@@ -751,7 +721,7 @@
                 data: {
                     labels: ranges.map(r => r.label),
                     datasets: [{
-                        label: 'Collections Count',
+                        label: 'Collection Count',
                         data: ranges.map(r => r.count),
                         backgroundColor: 'rgba(34, 197, 94, 0.6)',
                         borderColor: 'rgb(34, 197, 94)',
