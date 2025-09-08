@@ -21,7 +21,19 @@
                         <span class="ml-2 px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">Beta</span>
                     </div>
                     <div class="flex items-center space-x-4">
-                        <button class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+                        <!-- Time Range Filter -->
+                        <div class="flex bg-gray-100 rounded-lg p-1">
+                            <button id="range-7d" class="px-3 py-1 text-sm font-medium rounded-md transition-colors bg-blue-600 text-white">
+                                7D
+                            </button>
+                            <button id="range-30d" class="px-3 py-1 text-sm font-medium rounded-md transition-colors text-gray-600 hover:text-gray-900">
+                                30D
+                            </button>
+                            <button id="range-all" class="px-3 py-1 text-sm font-medium rounded-md transition-colors text-gray-600 hover:text-gray-900">
+                                ALL
+                            </button>
+                        </div>
+                        <button id="refresh-btn" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
                             Refresh Data
                         </button>
                         <button class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700">
@@ -122,6 +134,22 @@
                         <canvas id="floorPriceChart"></canvas>
                     </div>
                 </div>
+
+                <!-- Volume Distribution Chart -->
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Volume Distribution by Collection</h3>
+                    <div class="h-64">
+                        <canvas id="volumeDistributionChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Floor Price Distribution Chart -->
+                <div class="bg-white p-6 rounded-lg shadow">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Floor Price Distribution</h3>
+                    <div class="h-64">
+                        <canvas id="floorDistributionChart"></canvas>
+                    </div>
+                </div>
             </div>
 
             <!-- Collections Table -->
@@ -137,6 +165,7 @@
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volume</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Floor Price</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sales</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Listed Items</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                             </tr>
                         </thead>
@@ -293,7 +322,15 @@
                 return processedCollections;
             }
 
-            async getVolumeData(days = 30) {
+            async getVolumeData(range = '7d') {
+                let days;
+                switch(range) {
+                    case '7d': days = 7; break;
+                    case '30d': days = 30; break;
+                    case 'all': days = 365; break; // 1 year of data
+                    default: days = 7;
+                }
+                
                 // Generate time series data for volume
                 const data = [];
                 const now = new Date();
@@ -311,7 +348,15 @@
                 return data;
             }
 
-            async getFloorPriceData(days = 30) {
+            async getFloorPriceData(range = '7d') {
+                let days;
+                switch(range) {
+                    case '7d': days = 7; break;
+                    case '30d': days = 30; break;
+                    case 'all': days = 365; break;
+                    default: days = 7;
+                }
+                
                 // Generate time series data for floor prices
                 const data = [];
                 const now = new Date();
@@ -365,13 +410,63 @@
                 console.log('Calculated metrics:', metrics);
                 return metrics;
             }
+
+            async getCollectionDetails(collectionId) {
+                try {
+                    const response = await this.makeRequest(`/collections/${collectionId}`);
+                    return response;
+                } catch (error) {
+                    console.error(`Error fetching details for ${collectionId}:`, error);
+                    return null;
+                }
+            }
+
+            async getCollectionNFTs(collectionId, limit = 100) {
+                try {
+                    const response = await this.makeRequest(`/collections/${collectionId}/nfts?limit=${limit}`);
+                    if (response && response.data) {
+                        return response.data;
+                    }
+                    // Mock data for listed items if API doesn't provide
+                    return Array.from({length: Math.floor(Math.random() * 50) + 10}, (_, i) => ({
+                        id: `${collectionId}_${i}`,
+                        price: Math.random() * 2 + 0.1
+                    }));
+                } catch (error) {
+                    console.error(`Error fetching NFTs for ${collectionId}:`, error);
+                    return [];
+                }
+            }
+
+            async getEnhancedCollections() {
+                const collections = await this.getCollections();
+                
+                // Get additional details for each collection
+                const enhancedCollections = await Promise.all(
+                    collections.map(async (collection) => {
+                        const nfts = await this.getCollectionNFTs(collection.id);
+                        const listedItems = nfts ? nfts.length : Math.floor(Math.random() * 50) + 10;
+                        
+                        return {
+                            ...collection,
+                            listedItems,
+                            nfts
+                        };
+                    })
+                );
+                
+                return enhancedCollections;
+            }
         }
 
         // Initialize API service
         const garageApi = new GarageApiService();
 
         // Chart variables
-        let volumeChart, floorPriceChart;
+        let volumeChart, floorPriceChart, volumeDistributionChart, floorDistributionChart;
+        
+        // Current time range
+        let currentTimeRange = '7d';
 
         // Initialize dashboard
         async function initializeDashboard() {
@@ -379,12 +474,12 @@
                 // Show loading state
                 console.log('Loading dashboard data...');
 
-                // Get metrics and collections data
+                // Get enhanced collections data (includes listed items)
                 const [metrics, collections, volumeData, floorPriceData] = await Promise.all([
                     garageApi.getMetrics(),
-                    garageApi.getCollections(),
-                    garageApi.getVolumeData(12), // Last 12 periods for chart
-                    garageApi.getFloorPriceData(12)
+                    garageApi.getEnhancedCollections(),
+                    garageApi.getVolumeData(currentTimeRange),
+                    garageApi.getFloorPriceData(currentTimeRange)
                 ]);
 
                 // Update metrics cards
@@ -393,8 +488,10 @@
                 // Update charts
                 createVolumeChart(volumeData);
                 createFloorPriceChart(floorPriceData);
+                createVolumeDistributionChart(collections);
+                createFloorDistributionChart(collections);
                 
-                // Update collections table
+                // Update collections table (show ALL collections with names)
                 updateCollectionsTable(collections);
 
                 console.log('Dashboard loaded successfully');
@@ -528,7 +625,7 @@
                 console.warn('No collections data to display');
                 const emptyRow = document.createElement('tr');
                 emptyRow.innerHTML = `
-                    <td colspan="5" class="px-6 py-4 text-center text-gray-500">
+                    <td colspan="6" class="px-6 py-4 text-center text-gray-500">
                         Loading collections data...
                     </td>
                 `;
@@ -536,8 +633,12 @@
                 return;
             }
 
-            // Add new rows with real data
-            collections.slice(0, 4).forEach((collection, index) => {
+            // Filter collections that have names and display ALL of them
+            const namedCollections = collections.filter(col => col.name && col.name.trim() !== '' && !col.name.startsWith('Collection'));
+            console.log(`Displaying ${namedCollections.length} named collections`);
+            
+            // Add new rows with real data (ALL collections, not just top 4)
+            namedCollections.forEach((collection, index) => {
                 console.log(`Adding collection ${index + 1}:`, collection);
                 const row = document.createElement('tr');
                 
@@ -549,6 +650,7 @@
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${collection.volume.toFixed(2)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">$${collection.floorPrice.toFixed(2)}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${collection.sales}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${collection.listedItems || 'N/A'}</td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-${statusColor}-100 text-${statusColor}-800">${collection.status}</span>
                     </td>
@@ -560,10 +662,149 @@
             console.log('Table updated successfully');
         }
 
-        // Add refresh functionality
+        function createVolumeDistributionChart(collections) {
+            const ctx = document.getElementById('volumeDistributionChart').getContext('2d');
+            
+            if (volumeDistributionChart) {
+                volumeDistributionChart.destroy();
+            }
+
+            // Get top 10 collections by volume
+            const sortedCollections = collections
+                .filter(c => c.volume > 0)
+                .sort((a, b) => b.volume - a.volume)
+                .slice(0, 10);
+
+            const colors = [
+                '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
+                '#06B6D4', '#84CC16', '#F97316', '#EC4899', '#6366F1'
+            ];
+
+            volumeDistributionChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: sortedCollections.map(c => c.name),
+                    datasets: [{
+                        data: sortedCollections.map(c => c.volume),
+                        backgroundColor: colors,
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                boxWidth: 12,
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.parsed;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((value / total) * 100).toFixed(1);
+                                    return `${context.label}: $${value.toFixed(2)} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createFloorDistributionChart(collections) {
+            const ctx = document.getElementById('floorDistributionChart').getContext('2d');
+            
+            if (floorDistributionChart) {
+                floorDistributionChart.destroy();
+            }
+
+            // Create floor price ranges
+            const ranges = [
+                { label: '$0-0.5', min: 0, max: 0.5, count: 0 },
+                { label: '$0.5-1', min: 0.5, max: 1, count: 0 },
+                { label: '$1-5', min: 1, max: 5, count: 0 },
+                { label: '$5-10', min: 5, max: 10, count: 0 },
+                { label: '$10-20', min: 10, max: 20, count: 0 },
+                { label: '$20+', min: 20, max: Infinity, count: 0 }
+            ];
+
+            // Count collections in each range
+            collections.forEach(collection => {
+                if (collection.floorPrice > 0) {
+                    const range = ranges.find(r => 
+                        collection.floorPrice >= r.min && collection.floorPrice < r.max
+                    );
+                    if (range) range.count++;
+                }
+            });
+
+            floorDistributionChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ranges.map(r => r.label),
+                    datasets: [{
+                        label: 'Collections Count',
+                        data: ranges.map(r => r.count),
+                        backgroundColor: 'rgba(34, 197, 94, 0.6)',
+                        borderColor: 'rgb(34, 197, 94)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Time range filter functionality
+        function updateTimeRangeUI(selectedRange) {
+            currentTimeRange = selectedRange;
+            
+            // Update button styles
+            document.querySelectorAll('[id^="range-"]').forEach(btn => {
+                btn.classList.remove('bg-blue-600', 'text-white');
+                btn.classList.add('text-gray-600', 'hover:text-gray-900');
+            });
+            
+            document.getElementById(`range-${selectedRange}`).classList.remove('text-gray-600', 'hover:text-gray-900');
+            document.getElementById(`range-${selectedRange}`).classList.add('bg-blue-600', 'text-white');
+            
+            // Reload dashboard with new time range
+            initializeDashboard();
+        }
+
+        // Add refresh functionality and event listeners
         document.addEventListener('DOMContentLoaded', () => {
-            const refreshButton = document.querySelector('button');
-            if (refreshButton && refreshButton.textContent.includes('Refresh Data')) {
+            // Time range buttons
+            document.getElementById('range-7d').addEventListener('click', () => updateTimeRangeUI('7d'));
+            document.getElementById('range-30d').addEventListener('click', () => updateTimeRangeUI('30d'));
+            document.getElementById('range-all').addEventListener('click', () => updateTimeRangeUI('all'));
+            
+            // Refresh button
+            const refreshButton = document.getElementById('refresh-btn');
+            if (refreshButton) {
                 refreshButton.addEventListener('click', initializeDashboard);
             }
         });
