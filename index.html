@@ -492,10 +492,14 @@
             }
 
             // Show current volume as single bar
+            const rangeLabel = currentTimeRange === '24h' ? '24H Total Volume' : 
+                              currentTimeRange === '7d' ? '7D Total Volume' : 
+                              currentTimeRange === '30d' ? '30D Total Volume' : 'All-Time Total Volume';
+            
             volumeChart = new Chart(volumeCtx, {
                 type: 'bar',
                 data: {
-                    labels: ['Current Total Volume'],
+                    labels: [rangeLabel],
                     datasets: [{
                         label: 'Volume (FUEL)',
                         data: volumeData.map(d => d.volume),
@@ -540,10 +544,14 @@
             }
 
             // Show current average floor price as single bar
+            const floorRangeLabel = currentTimeRange === '24h' ? '24H Avg Floor Price' : 
+                                   currentTimeRange === '7d' ? '7D Avg Floor Price' : 
+                                   currentTimeRange === '30d' ? '30D Avg Floor Price' : 'All-Time Avg Floor Price';
+            
             floorPriceChart = new Chart(floorPriceCtx, {
                 type: 'bar',
                 data: {
-                    labels: ['Current Avg Floor Price'],
+                    labels: [floorRangeLabel],
                     datasets: [{
                         label: 'Floor Price (FUEL)',
                         data: floorPriceData.map(d => d.floorPrice),
